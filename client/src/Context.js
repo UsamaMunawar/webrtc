@@ -5,7 +5,7 @@ import Peer from 'simple-peer';
 const SocketContext = createContext();
 
 // const socket = io('http://localhost:5000');
-const socket = io('https://mywebrtcservice.onrender.com/');
+const socket = io('http://134.209.150.219:5000/');
 
 const ContextProvider = ({ children }) => {
   const [callAccepted, setCallAccepted] = useState(false);
