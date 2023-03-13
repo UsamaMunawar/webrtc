@@ -29,7 +29,10 @@ const ContextProvider = ({ children }) => {
         myVideo.current.srcObject = currentStream;
       });
 
-    socket.on('me', (id) => setMe(id));
+    socket.on('me', (id) => {
+      setMe(id);
+      socket.emit('registerToRoom', { roomId: 'secret' });
+    });
 
     socket.on('callUser', ({ from, name: callerName, signal }) => {
       setCall({ isReceivingCall: true, from, name: callerName, signal });
@@ -42,7 +45,7 @@ const ContextProvider = ({ children }) => {
     const peer = new Peer({ initiator: false, trickle: false, stream });
 
     peer.on('signal', (data) => {
-      socket.emit('answerCall', { signal: data, to: call.from });
+      socket.emit('answerCall', { signal: data, to: 'secret' });
     });
 
     peer.on('stream', (currentStream) => {
@@ -54,12 +57,12 @@ const ContextProvider = ({ children }) => {
     connectionRef.current = peer;
   };
 
-  const callUser = (id) => {
+  const callUser = () => {
     const peer = new Peer({ initiator: true, trickle: false, stream });
 
     peer.on('signal', (data) => {
       socket.emit('callUser', {
-        userToCall: id,
+        userToCall: 'secret',
         signalData: data,
         from: me,
         name,
