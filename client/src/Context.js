@@ -4,8 +4,8 @@ import Peer from 'simple-peer';
 
 const SocketContext = createContext();
 
-// const socket = io('http://localhost:5000');
-const socket = io('https://mywebrtcservice.onrender.com/');
+const socket = io('http://localhost:5000');
+// const socket = io('https://mywebrtcservice.onrender.com/');
 // const socket = io('http://134.209.150.219:5000/');
 
 const ContextProvider = ({ children }) => {
@@ -21,7 +21,8 @@ const ContextProvider = ({ children }) => {
   const connectionRef = useRef();
 
   useEffect(() => {
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    navigator.mediaDevices
+      .getUserMedia({ video: true, audio: true })
       .then((currentStream) => {
         setStream(currentStream);
 
@@ -57,7 +58,12 @@ const ContextProvider = ({ children }) => {
     const peer = new Peer({ initiator: true, trickle: false, stream });
 
     peer.on('signal', (data) => {
-      socket.emit('callUser', { userToCall: id, signalData: data, from: me, name });
+      socket.emit('callUser', {
+        userToCall: id,
+        signalData: data,
+        from: me,
+        name,
+      });
     });
 
     peer.on('stream', (currentStream) => {
@@ -82,20 +88,21 @@ const ContextProvider = ({ children }) => {
   };
 
   return (
-    <SocketContext.Provider value={{
-      call,
-      callAccepted,
-      myVideo,
-      userVideo,
-      stream,
-      name,
-      setName,
-      callEnded,
-      me,
-      callUser,
-      leaveCall,
-      answerCall,
-    }}
+    <SocketContext.Provider
+      value={{
+        call,
+        callAccepted,
+        myVideo,
+        userVideo,
+        stream,
+        name,
+        setName,
+        callEnded,
+        me,
+        callUser,
+        leaveCall,
+        answerCall,
+      }}
     >
       {children}
     </SocketContext.Provider>
