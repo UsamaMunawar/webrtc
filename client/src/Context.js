@@ -31,7 +31,7 @@ const ContextProvider = ({ children }) => {
 
     socket.on('me', (id) => {
       setMe(id);
-      socket.emit('registerToRoom', { roomId: 'secret' });
+      socket.emit('registerToRoom', { roomId: 'order-taking' });
     });
 
     socket.on('callUser', ({ from, name: callerName, signal }) => {
@@ -45,7 +45,7 @@ const ContextProvider = ({ children }) => {
     const peer = new Peer({ initiator: false, trickle: false, stream });
 
     peer.on('signal', (data) => {
-      socket.emit('answerCall', { signal: data, to: 'secret' });
+      socket.emit('answerCall', { signal: data, to: 'order-taking' });
     });
 
     peer.on('stream', (currentStream) => {
@@ -62,7 +62,7 @@ const ContextProvider = ({ children }) => {
 
     peer.on('signal', (data) => {
       socket.emit('callUser', {
-        userToCall: 'secret',
+        userToCall: 'order-taking',
         signalData: data,
         from: me,
         name,
