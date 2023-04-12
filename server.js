@@ -11,7 +11,7 @@ const io = require('socket.io')(server, {
 });
 
 app.use(function (req, res, next) {
-  res.header('Access-Control-Allow-Origin', 'YOUR-DOMAIN.TLD');
+  res.header('Access-Control-Allow-Origin', '*');
   res.header(
     'Access-Control-Allow-Headers',
     'Origin, X-Requested-With, Content-Type, Accept'
@@ -25,32 +25,117 @@ app.get('/', (req, res) => {
   res.send('Running');
 });
 
+const users = {};
+
 io.on('connection', (socket) => {
-  socket.emit('me', socket.id);
-  console.log({ socket: socket.id });
-  socket.on('registerToSession', ({ sessionId }) => {
-    console.log({ sessionId });
+  console.log('data', socket);
+  socket.emit('connection-success', socket.id);
+  socket.on('register-user', ({ user, sessionId }) => {
+    if (users[sessionId]) {
+      if (
+        users[sessionId]?.activeUsers?.length &&
+        users[sessionId]?.activeUsers?.find((u) => u?.socketId === socket.id)
+      ) {
+        users[sessionId].activeUsers = users[sessionId].activeUsers.map((u) =>
+          u?.socketId === socket.id
+            ? { ...user, socketId: socket.id }
+            : { ...u, socketId: socket.id }
+        );
+        return;
+      }
+      users[sessionId] = {
+        ...users[sessionId],
+        activeUsers: [
+          ...users[sessionId]?.activeUsers,
+          { ...user, socketId: socket.id },
+        ],
+      };
+    } else {
+      users[sessionId] = {
+        activeUsers: [{ ...user, socketId: socket.id }],
+      };
+    }
     socket.join(sessionId);
+    console.log('loggingin', users[sessionId]?.activeUsers);
+  });
+  socket.on('customer-screen-opened', ({ sessionId, userR }) => {
+    const isCustomerScreenOpened = users[sessionId]?.activeUsers?.find(
+      (user) => user?.isCustomerScreen
+    );
+    if (isCustomerScreenOpened) {
+      socket.emit('screen-exist');
+      return;
+    }
+    if (users[sessionId]?.activeUsers?.length) {
+      console.log('inside if');
+      users[sessionId] = {
+        ...users[sessionId],
+        activeUsers: [
+          ...users[sessionId]?.activeUsers?.map((user) => {
+            console.log('inside map', user);
+            return user?.socketId === socket.id
+              ? { ...user, isCustomerScreen: true, isConnected: false }
+              : { ...user };
+          }),
+        ],
+      };
+    } else {
+      console.log('inside else', userR);
+      users[sessionId] = {
+        ...users[sessionId],
+        activeUsers: [
+          {
+            ...userR,
+            socketId: socket.id,
+            isCustomerScreen: true,
+            isConnected: false,
+          },
+        ],
+      };
+    }
+    console.log('cust-screen', users[sessionId]?.activeUsers);
   });
 
   socket.on('disconnect', () => {
-    // socket.broadcast.emit('callEnded');
+    for (const [sessionId, members] of Object.entries(users)) {
+      const index = members?.activeUsers?.findIndex(
+        (users) => users?.socketId === socket.id
+      );
+      if (index >= -1) {
+        members?.activeUsers?.splice(index, 1);
+      }
+    }
+    console.log('disconnect', users);
   });
 
-  socket.on('callUser', ({ userToCall, signalData, from }) => {
-    io.to(userToCall).emit('callUser', { signal: signalData, from });
-    // socket.broadcast.emit('callUser', { signal: signalData });
+  socket.on('callUser', ({ userToCall, signalData, from, sessionId }) => {
+    const customerScreen = users[sessionId]?.activeUsers?.find(
+      (user) => user?.isCustomerScreen
+    );
+    if (!customerScreen) {
+      socket.emit('call-refused', { isCustomerScreen: false });
+      return;
+    }
+    if (customerScreen?.isConnected) {
+      socket.emit('call-refused', { isConnected: true });
+      return;
+    }
+    console.log('customer-screen is here', customerScreen);
+    io.to(customerScreen?.socketId).emit('callUser', {
+      signal: signalData,
+      from,
+    });
   });
 
   socket.on('answerCall', (data) => {
-    // socket.to('testing-socket').emit('callAccepted', data.signal);
-    // socket.broadcast.emit('callAccepted', data.signal);
     io.to(data.to).emit('callAccepted', data.signal);
   });
 
-  socket.on('call_ended', (data) => {
-    console.log('call_ended',data)
-    io.to(data.id).emit('callEnded');
+  socket.on('call_ended', ({ sessionId }) => {
+    const customerScreen = users[sessionId]?.activeUsers?.find(
+      (user) => user?.isCustomerScreen
+    );
+    io.to(customerScreen.socketId).emit('callEnded');
   });
 
   socket.on('update_todays_orders_count', async (data) => {
@@ -96,7 +181,6 @@ io.on('connection', (socket) => {
   });
 
   socket.on('update_saved_orders_count', async (data) => {
-    console.log('update_saved_orders_count', data);
     const body = {
       jsonrpc: '2.0',
       params: {
@@ -112,12 +196,10 @@ io.on('connection', (socket) => {
         },
       },
     };
-    console.log(body);
     const response = await axios.post(
       `${data.url}/api/user/authenticate`,
       body
     );
-    console.log('saved_orders_count', response?.data);
     io.in(data.sessionId).emit('updated_saved_orders_count', {
       result: JSON.stringify(response?.data?.result),
     });
@@ -144,19 +226,19 @@ io.on('connection', (socket) => {
 
   socket.on('update-live-screen', (data) => {
     if (data?.order === 'saved') {
-      io.in(data?.sessionId).emit('updated-live-screen', {
+      socket.broadcast.emit('updated-live-screen', {
         order: 'saved',
       });
       return;
     }
     if (data?.order === 'discarded') {
-      io.in(data?.sessionId).emit('updated-live-screen', {
+      socket.broadcast.emit('updated-live-screen', {
         order: 'discarded',
       });
       return;
     }
     if (data?.order === 'paid') {
-      io.in(data?.sessionId).emit('updated-live-screen', {
+      socket.broadcast.emit('updated-live-screen', {
         order: 'paid',
       });
       return;
@@ -164,7 +246,7 @@ io.on('connection', (socket) => {
     const order = JSON.parse(data?.order);
     const customer = data?.customer;
     const selectedPos = data?.selectedPos;
-    io.in(data?.sessionId).emit('updated-live-screen', {
+    socket.broadcast.emit('updated-live-screen', {
       order: order,
       customer: customer,
       selectedPos: selectedPos,
