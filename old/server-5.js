@@ -77,13 +77,6 @@ io.on('connection', async (socket) => {
             screenType: screenType,
             socketId: socket.id,
           });
-          // io.in(Number(sessionId)).emit('customer-screen-disconnected', {
-          //       sessionId: sessionId,
-          //     });
-          io.in(Number(sessionId)).emit('prev-sock-removed', {
-            sessionId: sessionId,
-            isCustomerScreen: false,
-          });
           socket.join(Number(sessionId));
           socket.emit('connection-success', socket.id);
         } else {

@@ -2,23 +2,13 @@ const app = require('express')();
 const server = require('http').createServer(app);
 const axios = require('axios');
 const cors = require('cors');
-const { Server } = require('socket.io');
 
-const io = new Server(server, {
-  pingInterval: 6000,
-  pingTimeout: 5000,
+const io = require('socket.io')(server, {
   cors: {
     origin: '*',
     methods: ['GET', 'POST'],
   },
 });
-
-// const io = require('socket.io')(server, {
-//   cors: {
-//     origin: '*',
-//     methods: ['GET', 'POST'],
-//   },
-// });
 
 app.use(function (req, res, next) {
   res.header('Access-Control-Allow-Origin', '*');
@@ -42,74 +32,51 @@ io.on('connection', async (socket) => {
   const sessionId = queryParams.sessionId;
   const user = { ...JSON.parse(queryParams.user) };
   const screenType = queryParams.screenType;
-  console.log('data', user, sessionId, screenType);
+  console.log('data', user, sessionId);
 
   //Add user to poll
   if (users[sessionId]) {
-    if (users[sessionId]?.activeUsers?.length) {
-      if (screenType === 'live-customer') {
-        //check if already a live-customer in users poll
-        const prevLiveScreen = users[sessionId]?.activeUsers?.find(
-          (screen) => screen?.screenType === screenType
+    if (users[sessionId]?.activeUsers) {
+      if (
+        users[sessionId]?.activeUsers?.find(
+          (u) =>
+            u?.screenType === 'live-customer' && screenType === 'live-customer'
+        )
+      ) {
+        const indexOfUser = users[sessionId]?.activeUsers?.findIndex(
+          (u) =>
+            u?.screenType === 'live-customer' && screenType === 'live-customer'
         );
-        //if found then remove that from poll
-        if (prevLiveScreen) {
-          users[sessionId].activeUsers = [
-            ...users[sessionId]?.activeUsers?.filter(
-              (s) => s.socketId !== prevLiveScreen.socketId
-            ),
-          ];
-          const socks = await io.fetchSockets();
-          for (const sock of socks) {
-            if (sock.id === prevLiveScreen.socketId) {
-              //kick from room
-              sock.leave(Number(sessionId));
-              //remove from user poll
 
-              //disconnect it from socket
+        const prevScreen = users[sessionId].activeUsers[indexOfUser];
+        const socks = await io.fetchSockets();
+        console.log('prevScreen', prevScreen, socks);
+        if (prevScreen) {
+          console.log('sockets', socks);
+          for (const sock of socks) {
+            console.log('socket id', sock.id);
+            if (sock.id === prevScreen.socketId) {
               sock.disconnect(true);
             }
           }
-          console.log(users[sessionId].activeUsers);
-          //add new one into poll and join room
-          users[sessionId].activeUsers.push({
-            ...user,
-            screenType: screenType,
-            socketId: socket.id,
-          });
-          // io.in(Number(sessionId)).emit('customer-screen-disconnected', {
-          //       sessionId: sessionId,
-          //     });
-          io.in(Number(sessionId)).emit('prev-sock-removed', {
-            sessionId: sessionId,
-            isCustomerScreen: false,
-          });
-          socket.join(Number(sessionId));
-          socket.emit('connection-success', socket.id);
-        } else {
-          //else add the screen into poll and join the room
-          //emit success
-          users[sessionId].activeUsers.push({
-            ...user,
-            screenType: screenType,
-            socketId: socket.id,
-          });
-          socket.join(Number(sessionId));
-          socket.emit('connection-success', socket.id);
         }
+        users[sessionId].activeUsers[indexOfUser] = {
+          ...user,
+          screenType: screenType,
+          socketId: socket.id,
+        };
+
+        return;
       }
-      //simply add the screen to user poll
-      //join room
-      //emit success
-      users[sessionId].activeUsers.push({
-        ...user,
-        screenType: screenType,
-        socketId: socket.id,
-      });
-      socket.join(Number(sessionId));
-      socket.emit('connection-success', socket.id);
+      users[sessionId].activeUsers = [
+        ...users[sessionId]?.activeUsers,
+        {
+          ...user,
+          screenType: screenType,
+          socketId: socket.id,
+        },
+      ];
     } else {
-      //add the first user to userp oll and join room
       users[sessionId].activeUsers = [
         {
           ...user,
@@ -117,8 +84,6 @@ io.on('connection', async (socket) => {
           socketId: socket.id,
         },
       ];
-      socket.join(Number(sessionId));
-      socket.emit('connection-success', socket.id);
     }
   } else {
     users[sessionId] = {
@@ -130,10 +95,12 @@ io.on('connection', async (socket) => {
         },
       ],
     };
-    socket.join(Number(sessionId));
-    socket.emit('connection-success', socket.id);
-    return;
   }
+
+  // console.log('users-poll', users[sessionId]?.activeUsers);
+  socket.join(Number(sessionId));
+
+  socket.emit('connection-success', socket.id);
 
   //remove user from poll when disconnected
   socket.on('disconnect', () => {
@@ -146,6 +113,7 @@ io.on('connection', async (socket) => {
         disconnectedScreen &&
         disconnectedScreen?.screenType === 'live-customer'
       ) {
+        // console.log({ disconnectedScreen, sessionId });
         io.in(Number(sessionId)).emit('customer-screen-disconnected', {
           sessionId: sessionId,
         });

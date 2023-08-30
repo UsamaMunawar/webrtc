@@ -80,10 +80,10 @@ io.on('connection', async (socket) => {
           // io.in(Number(sessionId)).emit('customer-screen-disconnected', {
           //       sessionId: sessionId,
           //     });
-          io.in(Number(sessionId)).emit('prev-sock-removed', {
-            sessionId: sessionId,
+          io.in(Number(sessionId)).emit('call-refused', {
             isCustomerScreen: false,
           });
+          return;
           socket.join(Number(sessionId));
           socket.emit('connection-success', socket.id);
         } else {
